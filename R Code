@@ -1,0 +1,155 @@
+library(readxl)
+library(plyr)
+library(tibble)
+library(ISLR)
+
+xl_data <- "C:/Users/shriy/Desktop/Studies/2_Sem/DM_1/HW3/IMB579-XLS-ENG.xlsx"
+df_manipulator <- read_excel(path = xl_data, sheet = "Manipulator")
+df_nonManipulator <- read_excel(path = xl_data, sheet = "Non-Manipulator")
+df_data <- read_excel(path = xl_data, sheet = "Complete Data")
+df_sample <- read_excel(path = xl_data, sheet = "Sample for Model Development")
+colnames(df_sample)[11] <- "C.MANIPULATOR"
+C.MANIPULATOR <- as.factor(df_sample$C.MANIPULATOR)
+df_sample <- df_sample[-11] 
+df_sample <- data.frame(df_sample, C.MANIPULATOR)
+
+colnames(df_data)[11] <- "C.MANIPULATOR"
+C.MANIPULATOR <- as.factor(df_data$C.MANIPULATOR)
+df_data <- df_data[-11] 
+df_data <- data.frame(df_data, C.MANIPULATOR)
+
+Manipulater <- as.factor(df_data$Manipulater)
+df_data <- df_data[-10] 
+df_data <- data.frame(df_data, Manipulater)
+
+#1 Logistic Regression Model
+
+logitModel <-glm(C.MANIPULATOR ~ DSRI+GMI+AQI+SGI+ACCR+DEPI+SGAI+LEVI, data = df_sample, family = "binomial")
+summary(logitModel)
+layout(matrix(c(1,2,3,4),2,2))
+plot(logitModel)
+
+set.seed(123)
+indx <- sample(2,nrow(df_sample),replace=TRUE,prob=c(0.7,0.3))
+train <- df_sample[indx==1,] #group 1 with 70% of the data for training data
+test <- df_sample[indx==2,]
+lm_train <- glm(C.MANIPULATOR~ DSRI+GMI+AQI+SGI+ACCR, data=train, family="binomial")
+summary(lm_train)
+
+pred <- predict(lm_train, test, type="response")
+pred.1 <- ifelse(pred >= 0.5,1,0)
+pred.1 <- factor(pred.1,levels=c(0,1),order='TRUE')
+cf <- table(test$C.MANIPULATOR, pred.1, dnn = c("Predictions", "Actual"))
+cf
+
+mean(unlist(pred))
+my.accuracy <- function(actual, predictions)
+{
+  y <- as.vector(table(predictions, actual))
+  names(y) <- c("TN","FP","FN","TP")
+  acur <- (y["TN"]+y["TP"])/sum(y)
+  return(as.numeric(acur))
+}
+my.precision<- function(actual, predictions)
+{
+  y <- as.vector(table(predictions, actual))
+  names(y) <- c("TN","FP","FN","TP")
+  prec <- y["TP"]/(y["TP"]+y["FP"])
+  return(as.numeric(prec))
+}
+my.precision(test$C.MANIPULATOR, pred.1)
+
+my.recall <- function(actual, predictions)
+{
+  y <- as.vector(table(predictions, actual))
+  names(y) <- c("TN","FP","FN","TP")
+  rec <- y["TP"]/(y["FN"]+y["TP"])
+  return(as.numeric(rec))
+}
+my.recall(test$C.MANIPULATOR, pred.1)
+
+my.accuracy(test$C.MANIPULATOR, pred.1)
+mean(unlist(pred))
+
+#visualize the result
+library(pROC)
+library(ggplot2)
+roc.1 <- roc(test$C.MANIPULATOR, pred)
+x <- 1-roc.1$specificities
+y <- roc.1$sensitivities
+auc.1 <- roc.1$auc
+
+ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='red')+geom_abline(intercept=0,slope=1)+annotate('text',x=0.4,y=0.4,label=paste('AUC=',round(auc.1,digit=2)))+labs(x='False positive rate',y='True positive rate')
+
+#2 CART 
+library(rpart)
+library(rpart.plot)
+dt<-rpart(Manipulator~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI,data=new.data,method='class')#by using new dataset
+dt.1<-rpart(Manipulator~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI,data=train,method='class')#by using the sample one
+manipulator.pred<-predict(dt.1,test,type='class') #without type, output is probability
+rpart.plot(dt,main='manipulator detection',type=3,extra=100)
+rpart.plot(dt.1,type=3,extra=101)
+better<-prune(dt.1, cp= dt.1$cptable[which.min(dt.1$cptable[,"xerror"]),"CP"])  
+rpart.plot(better,type=3,extra=101)
+dt.1
+dt
+summary(dt)
+summary(dt.1)
+dt.1$cptable
+
+#3
+
+set.seed(123)
+indx.1 <- sample(2,nrow(df_data), replace=TRUE, prob=c(0.7,0.3))
+train.data <- df_data[indx.1 == 1,] 
+test.data <- df_data[indx.1 == 2,]
+lm.1 <- glm(C.MANIPULATOR~ DSRI+GMI+AQI+SGI+ACCR, data = train.data, family = "binomial")
+summary(lm.1)
+
+pred1 <- predict(lm.1, test.data, type="response")
+pred.2 <- ifelse(pred1 >= 0.5,1,0)
+pred.2 <- factor(pred.2,levels=c(0,1),order='TRUE')
+
+cf.1 <- table(test.data$C.MANIPULATOR, pred.2, dnn = c("Predictions", "Actual"))
+cf.1
+
+my.accuracy(test.data$C.MANIPULATOR, pred.2)
+my.recall(test.data$C.MANIPULATOR, pred.2)
+#ROC curve
+library(pROC)
+library(ROCR)
+#pred.3<-prediction(predictions=as.matrix(pred.2),labels=test.data$C.MANIPULATOR)
+roc.curve<-roc(test.data$C.MANIPULATOR,pred1)
+x<-1-roc.curve$specificities
+y<-roc.curve$sensitivities
+library(ggplot2)
+auc<-roc.curve$auc
+ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='red')+geom_abline(intercept=0,slope=1)+annotate('text',x=0.4,y=0.4,label=paste('AUC=',round(auc,digit=2)))+labs(x='False positive rate',y='True Positive Rate',title='ROC curve')
+
+#4 random forest
+library(randomForest)
+set.seed(234)
+rf1<-randomForest(Manipulator~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI,data=df_sample)
+
+rf <- randomForest(df_data$Manipulater ~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI, data = df_data, mtry = sqrt(ncol(df_data) - 1), ntree = 300, proximity = T, importance = T)
+rf
+importance(rf, type = 2)
+rf$proximity
+rf$predicted
+rf$votes
+
+library(ROCR)
+score <- rf$votes[, 2]
+pred.s2 <- ifelse(score >= 0.5,1,0)
+pred.s2 <- factor(pred.s2,levels=c(0,1),order='TRUE')
+pred2 <- prediction(score, df_data$Manipulater)
+perf <- performance(pred2, "tpr", "fpr")
+plot(perf)
+my.accuracy(df_data$Manipulater,pred.s2)
+my.recall(df_data$Manipulater,pred.s2)
+roc.curverf<-roc(df_data$Manipulater, score)
+x<-1-roc.curverf$specificities
+y<-roc.curverf$sensitivities
+auc<-roc.curve$auc
+
+ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='green')+geom_abline(intercept=0,slope=1)+annotate('text',x=0.4,y=0.4,label=paste('AUC=',round(auc,digit=2)))+labs(x='False positive rate',y='True Positive Rate',title='ROC curve')
