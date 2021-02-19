@@ -153,30 +153,96 @@ ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='red')+geom_abline(inter
 # This logistic regression had a slightly lower AIC score, approximately the same accuracy, and much lower recall. 
 # Given these results, we feel comfortable using the results from the first logistic regression on the complete dataset for comparison with the sample dataset.
 
-#4 random forest
+# 4 random forest
+# Sample data
 library(randomForest)
-set.seed(234)
-rf1<-randomForest(Manipulator~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI,data=df_sample)
 
-rf <- randomForest(df_data$Manipulater ~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI, data = df_data, mtry = sqrt(ncol(df_data) - 1), ntree = 300, proximity = T, importance = T)
-rf
-importance(rf, type = 2)
-rf$proximity
-rf$predicted
-rf$votes
+Manipulator <- as.factor(df_sample$Manipulator)
+df_sample <- df_sample[-10]
+df_sample <- data.frame(df_sample, Manipulator)
+rf.sample <- randomForest(Manipulator~DSRI+GMI+AQI+SGI+DEPI+SGAI+ACCR+LEVI,data=df_sample, mtry = sqrt(ncol(df_sample) - 1), ntree = 350, proximity = T, importance = T)
+rf.sample
+importance(rf.sample, type = 2)
+rf.sample$proximity
+rf.sample$predicted
+rf.sample$votes
+score.s <- rf.sample$votes[, 2]
+pred.s <- prediction(score.s, df_sample$Manipulator)
+pred.s1 <- ifelse(score.s >= 0.5,1,0)
+pred.s1 <- factor(pred.s1,levels=c(0,1),order='TRUE')
+cf.rf <- table(df_sample$Manipulator, pred.s1, dnn = c("Predictions", "Actual"))
+cf.rf
+ 
+my.accuracy(df_sample$Manipulator, pred.s1)
+# [1] 0.8909091
+my.precision(df_sample$Manipulator, pred.s1)
+# [1] 0.5384615
+my.recall(df_sample$Manipulator, pred.s1)
+# [1] 0.9130435
+roc.s<-roc(df_sample$Manipulator, score.s)
+x<-1-roc.s$specificities
+y<-roc.s$sensitivities
+auc.s<-roc.s$auc
 
-library(ROCR)
-score <- rf$votes[, 2]
-pred.s2 <- ifelse(score >= 0.5,1,0)
-pred.s2 <- factor(pred.s2,levels=c(0,1),order='TRUE')
-pred2 <- prediction(score, df_data$Manipulater)
-perf <- performance(pred2, "tpr", "fpr")
-plot(perf)
-my.accuracy(df_data$Manipulater,pred.s2)
-my.recall(df_data$Manipulater,pred.s2)
-roc.curverf<-roc(df_data$Manipulater, score)
-x<-1-roc.curverf$specificities
-y<-roc.curverf$sensitivities
-auc<-roc.curve$auc
+ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='green')+geom_abline(intercept=0,slope=1)+annotate('text',x=0.4,y=0.4,label=paste('AUC=',round(auc.s,digit=2)))+labs(x='False positive rate',y='True Positive Rate',title='ROC curve')
 
-ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='green')+geom_abline(intercept=0,slope=1)+annotate('text',x=0.4,y=0.4,label=paste('AUC=',round(auc,digit=2)))+labs(x='False positive rate',y='True Positive Rate',title='ROC curve')
+opt.cut <- function(perf){
+  # mapply function applies the function FUN to all perf@x.values, perf@y.values,perf@alpha.values
+  cut.ind <- mapply(FUN = function(x,y,p){d=(x-0)^2+(y-1)^2 # We compute the distance of all the points from the corner point [1,0]
+  ind<- which(d==min(d)) # We find the index of the point that is closest to the corner
+  c(recall = y[[ind]], specificity = 1-x[[ind]],cutoff = p[[ind]])},perf@x.values, perf@y.values,perf@alpha.values)
+}
+perf.s <- performance(pred.s, "tpr", "fpr")
+BestcutOffPoint.s <- opt.cut(perf.s)
+BestcutOffPoint.s
+
+# Complete Data
+complete_data <- Complete.data
+Manipulator <- as.factor(complete_data$Manipulater)
+complete_data <- complete_data[-10]
+complete_data <- data.frame(complete_data, Manipulator)
+rf.complete <- randomForest(Manipulator~DSRI+GMI+AQI+SGI++DEPI+SGAI+ACCR+LEVI,data=complete_data, mtry = sqrt(ncol(complete_data) - 1), ntree = 350, proximity = T, importance = T)
+rf.complete
+importance(rf.complete, type = 2)
+rf.complete$proximity
+rf.complete$predicted
+rf.complete$votes
+
+score.s <- rf.complete$votes[, 2]
+pred.s <- prediction(score.s, complete_data$Manipulator)
+pred.s1 <- ifelse(score.s >= 0.5,1,0)
+pred.s1 <- factor(pred.s1,levels=c(0,1),order='TRUE')
+cf.rf <- table(complete_data$Manipulator, pred.s1, dnn = c("Predictions", "Actual"))
+cf.rf
+my.accuracy(complete_data$Manipulator, pred.s1)
+# [1] 0.9701372
+my.precision(complete_data$Manipulator, pred.s1)
+# [1] 0.0.230769
+my.recall(complete_data$Manipulator, pred.s1)
+# [1] 0.6 
+library(pROC)
+roc.s<-roc(complete_data$Manipulator, score.s)
+x<-1-roc.s$specificities
+y<-roc.s$sensitivities
+auc.s<-roc.s$auc
+
+library(ggplot2)
+ggplot(data=NULL,mapping=aes(x=x,y=y))+geom_line(colour='green')+geom_abline(intercept=0,slope=1)+annotate('text',x=0.4,y=0.4,label=paste('AUC=',round(auc.s,digit=2)))+labs(x='False positive rate',y='True Positive Rate',title='ROC curve for Entire Dataset')
+
+perf.s <- performance(pred.s, "tpr","fpr")
+BestcutOffPoint.s <- opt.cut(perf.s)
+BestcutOffPoint.s
+
+# The random forest model for the complete dataset was much higher at 97% than the sample dataset’s 89%. 
+# However, the sample data was higher for recall, and when looking for a manipulator it is more important to avoid false negatives therefore recall is a higher priority. 
+# The AUC scores were almost identical and quite high for both datasets. 
+# The random forest model for the sample data had a higher accuracy for predictions on test data (89%) as compared with the classification tree (74%).
+
+# Recommendations
+# The Beneish Model considers eight financial ratios to identify whether a company has manipulated earnings. 
+# But when we ran the data provided in the case study through various models (such as logistic regression, random forest) 
+# we realised only a few ratios are significant (with respect to the data provided) for prediction which are DSRI,GMI,AQI,SGI and ACCR.
+# Our experience demonstrates that reliance on a “one size fits all” approach to applying a model can lead to suboptimal performance. 
+# We recommend that the Beneish model be used as a starting point for identifying manipulators 
+# with the understanding that the model will require analysis and potential adjustment for each dataset. 
+# For use on Indian businesses, we recommend using the M-score generated by the sample data but continually assess their outcomes to monitor the risk of overfitting.
